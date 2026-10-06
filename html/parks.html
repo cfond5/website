@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>63 Parks · Charlotte's National Park Tracker</title>
+<style>
+  :root {
+    --accent: #4c00ff;
+    --accent-bright: #7a3cff;
+    --accent-glow: rgba(76, 0, 255, .55);
+    --canvas: #090522;
+    --canvas-2: #0d0730;
+    --panel: #150e60;
+    --panel-2: #1b1270;
+    --panel-line: #2a1d8a;
+    --chrome: rgba(64, 16, 224, .98);
+    --text: #eef0ff;
+    --text-dim: #a9a6d9;
+    --text-faint: #7d79b5;
+    /* status colors */
+    --st-visited: #2ee6a0;
+    --st-planned: #4db8ff;
+    --st-bucket: #ffcf4d;
+    --st-none: #6b5fa0;
+    --danger: #ff5c7a;
+    --radius: 14px;
+    --shadow: 0 10px 30px rgba(0,0,0,.45);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--canvas);
+    color: var(--text);
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* ---------- Starfield ---------- */
+  #starfield {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(1200px 700px at 75% -10%, rgba(76,0,255,.22), transparent 60%),
+      radial-gradient(900px 600px at 10% 110%, rgba(122,60,255,.14), transparent 60%),
+      var(--canvas);
+  }
+  #stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .wrap { position: relative; z-index: 1; }
+
+  /* ---------- Header ---------- */
+  header.top {
+    display: flex; align-items: center; gap: 16px;
+    padding: 18px 26px;
+    background: linear-gradient(180deg, rgba(21,14,96,.9), rgba(13,7,48,.6));
+    border-bottom: 1px solid var(--panel-line);
+    backdrop-filter: blur(6px);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand { display: flex; flex-direction: column; gap: 2px; }
+  .brand h1 { margin: 0; font-size: 1.35rem; letter-spacing: .3px; }
+  .brand .sub { color: var(--text-dim); font-size: .82rem; }
+  .brand .peak { color: var(--accent-bright); }
+
+  .progress-head { margin-left: auto; display: flex; align-items: center; gap: 18px; }
+  .big-count { text-align: right; }
+  .big-count .num { font-size: 1.9rem; font-weight: 800; line-height: 1; }
+  .big-count .num span { color: var(--st-visited); }
+  .big-count .lbl { font-size: .72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .ring { --val: 0; width: 64px; height: 64px; border-radius: 50%;
+    background: conic-gradient(var(--st-visited) calc(var(--val) * 1%), rgba(255,255,255,.08) 0);
+    display: grid; place-items: center; }
+  .ring .inner { width: 50px; height: 50px; border-radius: 50%; background: var(--canvas-2);
+    display: grid; place-items: center; font-weight: 700; font-size: .85rem; }
+
+  .btn {
+    border: 1px solid var(--panel-line); background: var(--panel);
+    color: var(--text); padding: 8px 14px; border-radius: 10px; cursor: pointer;
+    font-size: .85rem; transition: all .15s ease;
+  }
+  .btn:hover { background: var(--panel-2); border-color: var(--accent-bright); }
+  .btn.accent { background: var(--accent); border-color: var(--accent-bright); }
+  .btn.accent:hover { background: var(--accent-bright); box-shadow: 0 0 16px var(--accent-glow); }
+
+  main { padding: 22px 26px 60px; max-width: 1500px; margin: 0 auto; }
+  .section-title { font-size: 1.05rem; margin: 30px 0 14px; display: flex; align-items: center; gap: 10px; }
+  .section-title::before { content: ""; width: 6px; height: 20px; border-radius: 3px; background: var(--accent-bright); box-shadow: 0 0 10px var(--accent-glow); }
+
+  /* ---------- Map + stats layout ---------- */
+  .map-row { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
+  .layout { display: grid; grid-template-columns: 1fr 340px; gap: 22px; align-items: start; }
+  .layout .col-main, .layout .col-rail { min-width: 0; }
+  .layout .col-main .section-title:first-child, .layout .col-rail .section-title:first-child { margin-top: 6px; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+  @media (max-width: 960px) { .map-row { grid-template-columns: 1fr; } }
+
+  .card { background: linear-gradient(180deg, var(--panel), var(--canvas-2)); border: 1px solid var(--panel-line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .map-card { padding: 10px; position: relative; }
+  #map { width: 100%; height: auto; display: block; background: #070418; border-radius: 10px; }
+  .state-path { fill: #2b2185; stroke: #7a6ce0; stroke-width: .8; vector-effect: non-scaling-stroke; }
+  .park-dot { cursor: pointer; stroke: #0b0730; stroke-width: 1.1; transition: r .12s ease, filter .12s ease; }
+  .park-dot:hover { filter: drop-shadow(0 0 6px currentColor); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 10px 14px 4px; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--text-dim); cursor: pointer; user-select: none; opacity: 1; transition: opacity .15s; }
+  .legend .item.off { opacity: .35; }
+  .legend .dot { width: 12px; height: 12px; border-radius: 50%; }
+
+  .map-nav { position: absolute; top: 52px; right: 22px; display: flex; flex-direction: column; gap: 6px; z-index: 6; }
+  .map-nav button { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--panel-line); background: var(--chrome); color: #fff; font-size: 1.15rem; line-height: 1; cursor: pointer; box-shadow: var(--shadow); display: grid; place-items: center; transition: all .13s ease; }
+  .map-nav button:hover { background: var(--accent-bright); box-shadow: 0 0 12px var(--accent-glow); }
+  .map-nav button:active { transform: translateY(1px); }
+
+  .tooltip {
+    position: fixed; z-index: 50; pointer-events: none; background: var(--chrome);
+    color: #fff; padding: 6px 10px; border-radius: 8px; font-size: .78rem;
+    box-shadow: var(--shadow); transform: translate(-50%, -140%); white-space: nowrap; display: none;
+  }
+
+  /* stats sidebar */
+  .stats .stat { padding: 14px 16px; border-bottom: 1px solid var(--panel-line); }
+  .stats .stat:last-child { border-bottom: none; }
+  .stats .v { font-size: 1.5rem; font-weight: 800; }
+  .stats .v.green { color: var(--st-visited); }
+  .stats .k { font-size: .72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .mini-bars { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
+  .mini-bars .row { font-size: .74rem; color: var(--text-dim); }
+  .mini-bars .track { height: 7px; background: rgba(255,255,255,.07); border-radius: 4px; margin-top: 4px; overflow: hidden; }
+  .mini-bars .fill { height: 100%; background: linear-gradient(90deg, var(--accent-bright), var(--st-visited)); border-radius: 4px; }
+
+  /* ---------- Next up ---------- */
+  .cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+  .cluster { padding: 16px 18px; }
+  .cluster h3 { margin: 0 0 4px; font-size: 1rem; }
+  .cluster .meta { font-size: .76rem; color: var(--accent-bright); margin-bottom: 10px; font-weight: 600; }
+  .cluster .parks { font-size: .82rem; color: var(--text-dim); line-height: 1.5; }
+  .cluster .why { font-size: .78rem; color: var(--text-faint); margin-top: 10px; font-style: italic; }
+  .pill { display: inline-block; background: rgba(122,60,255,.18); border: 1px solid var(--panel-line); border-radius: 20px; padding: 2px 10px; font-size: .72rem; margin: 2px 3px 0 0; color: var(--text); }
+
+  /* ---------- All parks ---------- */
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .controls input, .controls select {
+    background: var(--canvas-2); border: 1px solid var(--panel-line); color: var(--text);
+    padding: 8px 12px; border-radius: 10px; font-size: .85rem;
+  }
+  .controls input { min-width: 220px; }
+  .parks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .park-card { padding: 13px 15px; cursor: pointer; border-left: 4px solid var(--st-none); transition: transform .12s ease, border-color .12s; }
+  .park-card:hover { transform: translateY(-2px); border-color: var(--accent-bright); }
+  .park-card.visited { border-left-color: var(--st-visited); }
+  .park-card.planned { border-left-color: var(--st-planned); }
+  .park-card.bucket  { border-left-color: var(--st-bucket); }
+  .park-card .name { font-weight: 700; font-size: .92rem; }
+  .park-card .loc { font-size: .75rem; color: var(--text-dim); margin-top: 2px; }
+  .park-card .tags { margin-top: 8px; display: flex; gap: 6px; align-items: center; }
+  .status-chip { font-size: .68rem; padding: 2px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; }
+  .status-chip.visited { background: rgba(46,230,160,.16); color: var(--st-visited); }
+  .status-chip.planned { background: rgba(77,184,255,.16); color: var(--st-planned); }
+  .status-chip.bucket  { background: rgba(255,207,77,.16); color: var(--st-bucket); }
+  .status-chip.none    { background: rgba(107,95,160,.18); color: var(--text-dim); }
+  .park-card .region { font-size: .68rem; color: var(--text-faint); }
+
+  /* ---------- Modal ---------- */
+  .modal-bg { position: fixed; inset: 0; background: rgba(5,3,20,.72); backdrop-filter: blur(4px); z-index: 100; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .modal-bg.open { display: flex; }
+  .modal { width: 560px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 0; }
+  .modal .head { padding: 20px 22px; border-bottom: 1px solid var(--panel-line); position: sticky; top: 0; background: var(--panel); border-radius: var(--radius) var(--radius) 0 0; }
+  .modal .head h2 { margin: 0; font-size: 1.3rem; }
+  .modal .head .loc { color: var(--text-dim); font-size: .85rem; margin-top: 3px; }
+  .modal .body { padding: 20px 22px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: .74rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 6px; }
+  .field input, .field select, .field textarea {
+    width: 100%; background: var(--canvas-2); border: 1px solid var(--panel-line); color: var(--text);
+    padding: 9px 12px; border-radius: 10px; font-size: .9rem; font-family: inherit;
+  }
+  .field textarea { min-height: 70px; resize: vertical; }
+  .park-desc { background: var(--canvas-2); border: 1px solid var(--panel-line); border-left: 3px solid var(--accent-bright); border-radius: 10px; padding: 12px 14px; font-size: .9rem; line-height: 1.5; color: var(--text-dim); margin: 0 0 12px; }
+  .hero-img { width: 100%; max-height: 240px; object-fit: cover; border-radius: 10px; display: none; margin-bottom: 6px; background: var(--canvas-2); }
+  .img-credit { font-size: .68rem; color: var(--text-faint); text-align: right; margin-bottom: 12px; min-height: 12px; }
+  .nps-link { display: inline-block; margin: 0 0 18px; font-size: .82rem; color: var(--st-planned); text-decoration: none; border: 1px solid var(--panel-line); padding: 6px 12px; border-radius: 8px; }
+  .nps-link:hover { border-color: var(--st-planned); background: rgba(77,184,255,.1); }
+  .date-row { display: flex; align-items: center; gap: 10px; }
+  .date-row input { flex: 1; }
+  .date-sep { color: var(--text-faint); font-size: .82rem; }
+  .hint { font-size: .72rem; color: var(--text-faint); margin-top: 6px; }
+  .park-card .visit-dates { font-size: .72rem; color: var(--st-visited); margin-top: 6px; }
+  .hikes h4 { margin: 6px 0 10px; font-size: .9rem; display: flex; align-items: center; justify-content: space-between; }
+  .hike { background: var(--canvas-2); border: 1px solid var(--panel-line); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .hike .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .hike .grid3 input { font-size: .82rem; padding: 7px 9px; }
+  .hike .del { float: right; color: var(--danger); cursor: pointer; font-size: .78rem; border: none; background: none; }
+  .logsec h4 { margin: 18px 0 10px; font-size: .9rem; display: flex; align-items: center; justify-content: space-between; }
+  .logitem { background: var(--canvas-2); border: 1px solid var(--panel-line); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .logitem .del { float: right; color: var(--danger); cursor: pointer; font-size: .78rem; border: none; background: none; }
+  .logitem input, .logitem textarea, .logitem select {
+    width: 100%; background: var(--panel); border: 1px solid var(--panel-line); color: var(--text);
+    padding: 7px 9px; border-radius: 8px; font-size: .82rem; font-family: inherit;
+  }
+  .logitem textarea { min-height: 48px; resize: vertical; }
+  .logitem .row2 { display: grid; grid-template-columns: 1fr 110px; gap: 8px; margin-top: 8px; }
+  .logitem .proscons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .visits-head h4 { margin: 20px 0 10px; font-size: .95rem; display: flex; align-items: center; justify-content: space-between; }
+  .visit-card { background: var(--canvas-2); border: 1px solid var(--panel-line); border-left: 3px solid var(--st-visited); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .visit-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .visit-head strong { font-size: .9rem; }
+  .visit-del { padding: 3px 9px; font-size: .74rem; color: var(--danger); background: none; border: 1px solid var(--panel-line); }
+  .visit-del:hover { border-color: var(--danger); background: rgba(255,92,122,.08); }
+  .visit-card .logsec h4 { margin: 14px 0 8px; font-size: .84rem; }
+  .visit-card .field { margin-bottom: 12px; }
+  .modal .foot { padding: 16px 22px; border-top: 1px solid var(--panel-line); display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; background: var(--panel); }
+  .close-x { position: absolute; top: 16px; right: 18px; font-size: 1.4rem; cursor: pointer; color: var(--text-dim); background: none; border: none; }
+  .photo-preview { width: 100%; border-radius: 10px; margin-top: 8px; display: none; }
+
+  .territory-note { font-size: .76rem; color: var(--text-faint); padding: 8px 14px 2px; }
+
+  /* ---------- Ranking ---------- */
+  .rank-hint { font-size: .78rem; color: var(--text-faint); margin: -4px 0 14px; }
+  .rank-list { display: flex; flex-direction: column; gap: 8px; max-width: 820px; }
+  .rank-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-left: 4px solid var(--st-visited); }
+  .rank-item.dragging { opacity: .45; }
+  .rank-item.over { box-shadow: inset 0 2px 0 var(--accent-bright); }
+  .rank-num { font-weight: 800; font-size: 1.15rem; color: var(--accent-bright); min-width: 30px; text-align: center; }
+  .rank-grip { color: var(--text-faint); font-size: 1.1rem; cursor: grab; user-select: none; }
+  .rank-grip:active { cursor: grabbing; }
+  .rank-main { flex: 1; cursor: pointer; }
+  .rank-main .rn { font-weight: 700; font-size: .92rem; }
+  .rank-main .rl { font-size: .74rem; color: var(--text-dim); }
+  .rank-move { display: flex; flex-direction: column; gap: 3px; }
+  .rank-move button { width: 28px; height: 20px; border: 1px solid var(--panel-line); background: var(--panel); color: var(--text); border-radius: 6px; cursor: pointer; font-size: .68rem; line-height: 1; padding: 0; }
+  .rank-move button:hover:not(:disabled) { border-color: var(--accent-bright); background: var(--panel-2); }
+  .rank-move button:disabled { opacity: .3; cursor: default; }
+  .rank-empty { color: var(--text-faint); font-size: .85rem; }
+  .revisit-badge { font-size: .7rem; padding: 3px 9px; border-radius: 20px; font-weight: 700; white-space: nowrap; }
+  .revisit-badge.yes { background: rgba(46,230,160,.16); color: var(--st-visited); }
+  .revisit-badge.maybe { background: rgba(255,207,77,.16); color: var(--st-bucket); }
+  .revisit-badge.no { background: rgba(255,92,122,.16); color: var(--danger); }
+  .park-card .revisit-badge { display: inline-block; margin-top: 8px; }
+
+  footer.foot { text-align: center; color: var(--text-faint); font-size: .76rem; padding: 30px 0 10px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #stars .tw { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="starfield"></div>
+<canvas id="stars"></canvas>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>Charlotte's <span class="peak">63 Parks</span> 🏔️</h1>
+      <div class="sub">A lifetime chasing every U.S. National Park</div>
+      <a href="../index.html" style="color:var(--accent-bright);font-size:.78rem;text-decoration:none;margin-top:4px;">← Back to Charlotte's site</a>
+    </div>
+    <div class="progress-head">
+      <div class="big-count">
+        <div class="num"><span id="visitedCount">0</span> / 63</div>
+        <div class="lbl">parks visited</div>
+      </div>
+      <div class="ring" id="ring"><div class="inner" id="ringPct">0%</div></div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <button class="btn" id="exportBtn">⬇ Export</button>
+        <button class="btn" id="importBtn">⬆ Import</button>
+      </div>
+      <div style="display:none; flex-direction:column; gap:6px;" id="stravaBox">
+        <button class="btn accent" id="stravaConnect">⟲ Connect Strava</button>
+        <button class="btn" id="stravaSync">↻ Sync activities</button>
+      </div>
+      <div style="display:none; flex-direction:column; gap:6px;" id="cloudBox">
+        <button class="btn accent" id="cloudSave">☁ Save to cloud</button>
+        <button class="btn" id="cloudLoad">⤓ Load from cloud</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="layout">
+      <div class="col-main">
+        <div class="section-title">Your map</div>
+        <div class="card map-card">
+          <div class="legend" id="legend"></div>
+          <div class="map-nav">
+            <button id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+            <button id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+            <button id="zoomReset" title="Reset view" aria-label="Reset view">⟳</button>
+          </div>
+          <svg id="map" viewBox="0 0 975 610" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Map of U.S. National Parks"></svg>
+          <div class="territory-note" id="territoryNote"></div>
+        </div>
+
+        <div class="section-title">What's next</div>
+        <div class="cluster-grid" id="clusterGrid"></div>
+
+        <div class="section-title">All 63 parks</div>
+        <div class="controls">
+          <input type="text" id="search" placeholder="Search parks or states…" />
+          <select id="filterStatus">
+            <option value="">All statuses</option>
+            <option value="visited">Visited</option>
+            <option value="planned">Planned</option>
+            <option value="bucket">Bucket list</option>
+            <option value="none">Not yet</option>
+          </select>
+          <select id="filterRegion"><option value="">All regions</option></select>
+          <select id="sortBy">
+            <option value="name">Sort: Name</option>
+            <option value="region">Sort: Region</option>
+            <option value="status">Sort: Status</option>
+            <option value="state">Sort: State</option>
+          </select>
+        </div>
+        <div class="parks-grid" id="parksGrid"></div>
+      </div>
+
+      <div class="col-rail">
+        <div class="section-title">Progress</div>
+        <div class="card stats" id="statsPanel"></div>
+
+        <div class="section-title">My ranking</div>
+        <div class="rank-hint">Your visited parks, best at the top. Drag the ⠿ handle or use ▲▼ to reorder — new visits land at the bottom.</div>
+        <div class="rank-list" id="rankList"></div>
+      </div>
+    </div>
+
+    <footer class="foot">
+      Built for Charlotte · data lives in your browser (localStorage) · Export anytime to commit it to your site.
+    </footer>
+  </main>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<!-- Detail modal -->
+<div class="modal-bg" id="modalBg">
+  <div class="card modal" id="modal">
+    <button class="close-x" id="closeX">×</button>
+    <div class="head">
+      <h2 id="mName"></h2>
+      <div class="loc" id="mLoc"></div>
+    </div>
+    <div class="body">
+      <img class="hero-img" id="mHero" alt="" />
+      <div class="img-credit" id="mCredit"></div>
+      <p class="park-desc" id="mDesc"></p>
+      <a class="nps-link" id="mNps" href="#" target="_blank" rel="noopener">Official NPS site ↗</a>
+      <div class="field">
+        <label>Status</label>
+        <select id="mStatus">
+          <option value="none">Not yet</option>
+          <option value="bucket">Bucket list</option>
+          <option value="planned">Planned</option>
+          <option value="visited">Visited</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Would you visit again?</label>
+        <select id="mRevisit">
+          <option value="">—</option>
+          <option value="yes">👍 Yes, definitely</option>
+          <option value="maybe">🤷 Maybe</option>
+          <option value="no">👎 No</option>
+        </select>
+      </div>
+      <div class="visits-head">
+        <h4>Visits <button class="btn" id="addVisit" style="padding:4px 10px;font-size:.78rem;">+ Add a visit</button></h4>
+      </div>
+      <div id="visitList"></div>
+      <div class="field">
+        <label>Photo URL (optional — overrides the Wikipedia photo)</label>
+        <input type="text" id="mPhoto" placeholder="https://… paste your own photo link" />
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn" id="cancelBtn">Close</button>
+      <button class="btn accent" id="saveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept="application/json" style="display:none" />
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-composite-projections@1.5.0/d3-composite-projections.min.js"></script>
+<script>
+/* =======================================================================
+   SEED DATA — all 63 U.S. National Parks
+   lat/lon used to plot on the Albers USA projection.
+   Charlotte's 7 visited parks are pre-marked; RMNP seeded with real hikes.
+   ======================================================================= */
+const SEED = [
+  { id:"acadia", name:"Acadia", state:"Maine", region:"Northeast", lat:44.35, lon:-68.21 },
+  { id:"amsamoa", name:"American Samoa", state:"American Samoa", region:"Territories", lat:-14.25, lon:-170.68 },
+  { id:"arches", name:"Arches", state:"Utah", region:"Southwest", lat:38.73, lon:-109.59 },
+  { id:"badlands", name:"Badlands", state:"South Dakota", region:"Great Plains", lat:43.86, lon:-102.34 },
+  { id:"bigbend", name:"Big Bend", state:"Texas", region:"Southwest", lat:29.25, lon:-103.25 },
+  { id:"biscayne", name:"Biscayne", state:"Florida", region:"Southeast", lat:25.49, lon:-80.21 },
+  { id:"blackcanyon", name:"Black Canyon of the Gunnison", state:"Colorado", region:"Rocky Mountains", lat:38.57, lon:-107.72 },
+  { id:"bryce", name:"Bryce Canyon", state:"Utah", region:"Southwest", lat:37.57, lon:-112.18 },
+  { id:"canyonlands", name:"Canyonlands", state:"Utah", region:"Southwest", lat:38.20, lon:-109.93 },
+  { id:"capitolreef", name:"Capitol Reef", state:"Utah", region:"Southwest", lat:38.37, lon:-111.26 },
+  { id:"carlsbad", name:"Carlsbad Caverns", state:"New Mexico", region:"Southwest", lat:32.17, lon:-104.44 },
+  { id:"channelislands", name:"Channel Islands", state:"California", region:"California", lat:34.01, lon:-119.42 },
+  { id:"congaree", name:"Congaree", state:"South Carolina", region:"Southeast", lat:33.78, lon:-80.78 },
+  { id:"craterlake", name:"Crater Lake", state:"Oregon", region:"Pacific Northwest", lat:42.94, lon:-122.10 },
+  { id:"cuyahoga", name:"Cuyahoga Valley", state:"Ohio", region:"Midwest", lat:41.26, lon:-81.57, status:"visited", date:"2026-08-29", dateEnd:"2026-08-30" },
+  { id:"deathvalley", name:"Death Valley", state:"California / Nevada", region:"California", lat:36.51, lon:-117.08 },
+  { id:"denali", name:"Denali", state:"Alaska", region:"Alaska", lat:63.11, lon:-151.19 },
+  { id:"drytortugas", name:"Dry Tortugas", state:"Florida", region:"Southeast", lat:24.63, lon:-82.87 },
+  { id:"everglades", name:"Everglades", state:"Florida", region:"Southeast", lat:25.29, lon:-80.90 },
+  { id:"gatesarctic", name:"Gates of the Arctic", state:"Alaska", region:"Alaska", lat:67.78, lon:-153.30 },
+  { id:"gatewayarch", name:"Gateway Arch", state:"Missouri", region:"Midwest", lat:38.63, lon:-90.18, status:"visited" },
+  { id:"glacier", name:"Glacier", state:"Montana", region:"Rocky Mountains", lat:48.76, lon:-113.79 },
+  { id:"glacierbay", name:"Glacier Bay", state:"Alaska", region:"Alaska", lat:58.67, lon:-136.90 },
+  { id:"grandcanyon", name:"Grand Canyon", state:"Arizona", region:"Southwest", lat:36.11, lon:-112.11 },
+  { id:"grandteton", name:"Grand Teton", state:"Wyoming", region:"Rocky Mountains", lat:43.79, lon:-110.68 },
+  { id:"greatbasin", name:"Great Basin", state:"Nevada", region:"Southwest", lat:38.98, lon:-114.30 },
+  { id:"greatsanddunes", name:"Great Sand Dunes", state:"Colorado", region:"Rocky Mountains", lat:37.73, lon:-105.51, status:"visited" },
+  { id:"greatsmoky", name:"Great Smoky Mountains", state:"Tennessee / N. Carolina", region:"Southeast", lat:35.61, lon:-83.49 },
+  { id:"guadalupe", name:"Guadalupe Mountains", state:"Texas", region:"Southwest", lat:31.92, lon:-104.87 },
+  { id:"haleakala", name:"Haleakalā", state:"Hawaii", region:"Pacific Islands", lat:20.72, lon:-156.17, status:"visited" },
+  { id:"hawaiivolcanoes", name:"Hawaiʻi Volcanoes", state:"Hawaii", region:"Pacific Islands", lat:19.38, lon:-155.20, status:"visited" },
+  { id:"hotsprings", name:"Hot Springs", state:"Arkansas", region:"Southeast", lat:34.51, lon:-93.05 },
+  { id:"indianadunes", name:"Indiana Dunes", state:"Indiana", region:"Midwest", lat:41.65, lon:-87.05 },
+  { id:"isleroyale", name:"Isle Royale", state:"Michigan", region:"Midwest", lat:48.00, lon:-88.82 },
+  { id:"joshuatree", name:"Joshua Tree", state:"California", region:"California", lat:33.88, lon:-115.90 },
+  { id:"katmai", name:"Katmai", state:"Alaska", region:"Alaska", lat:58.60, lon:-155.00 },
+  { id:"kenaifjords", name:"Kenai Fjords", state:"Alaska", region:"Alaska", lat:59.92, lon:-149.65 },
+  { id:"kingscanyon", name:"Kings Canyon", state:"California", region:"California", lat:36.80, lon:-118.55 },
+  { id:"kobukvalley", name:"Kobuk Valley", state:"Alaska", region:"Alaska", lat:67.55, lon:-159.28 },
+  { id:"lakeclark", name:"Lake Clark", state:"Alaska", region:"Alaska", lat:60.97, lon:-153.42 },
+  { id:"lassen", name:"Lassen Volcanic", state:"California", region:"California", lat:40.49, lon:-121.51 },
+  { id:"mammothcave", name:"Mammoth Cave", state:"Kentucky", region:"Southeast", lat:37.19, lon:-86.10 },
+  { id:"mesaverde", name:"Mesa Verde", state:"Colorado", region:"Southwest", lat:37.23, lon:-108.46 },
+  { id:"rainier", name:"Mount Rainier", state:"Washington", region:"Pacific Northwest", lat:46.85, lon:-121.76 },
+  { id:"newrivergorge", name:"New River Gorge", state:"West Virginia", region:"Southeast", lat:38.07, lon:-81.08 },
+  { id:"northcascades", name:"North Cascades", state:"Washington", region:"Pacific Northwest", lat:48.77, lon:-121.30 },
+  { id:"olympic", name:"Olympic", state:"Washington", region:"Pacific Northwest", lat:47.80, lon:-123.60 },
+  { id:"petrifiedforest", name:"Petrified Forest", state:"Arizona", region:"Southwest", lat:34.91, lon:-109.81 },
+  { id:"pinnacles", name:"Pinnacles", state:"California", region:"California", lat:36.49, lon:-121.16 },
+  { id:"redwood", name:"Redwood", state:"California", region:"California", lat:41.21, lon:-124.00 },
+  { id:"rmnp", name:"Rocky Mountain", state:"Colorado", region:"Rocky Mountains", lat:40.34, lon:-105.68, status:"visited",
+    date:"2026-10-03", notes:"Back-to-back alpine weekend. Flattop + Hallett summit Sat (highest point, 12,713 ft), Sky Pond via the Timberline Falls scramble Sun. Dawn headlamp starts both days, mild & calm, clean noon turnarounds.",
+    hikes:[
+      { name:"Flattop Mtn + Hallett Peak", dist:"11.32", time:"6:53", gain:"4000", note:"High point 12,713 ft. Padded to hit 4k gain." },
+      { name:"Sky Pond via Glacier Gorge", dist:"11.2", time:"6:37", gain:"1780", note:"Timberline Falls Class 2-3 scramble; dry, not iced." }
+    ] },
+  { id:"saguaro", name:"Saguaro", state:"Arizona", region:"Southwest", lat:32.25, lon:-110.50 },
+  { id:"sequoia", name:"Sequoia", state:"California", region:"California", lat:36.49, lon:-118.57 },
+  { id:"shenandoah", name:"Shenandoah", state:"Virginia", region:"Southeast", lat:38.53, lon:-78.35, status:"visited" },
+  { id:"theodoreroosevelt", name:"Theodore Roosevelt", state:"North Dakota", region:"Great Plains", lat:46.98, lon:-103.54 },
+  { id:"virginislands", name:"Virgin Islands", state:"U.S. Virgin Islands", region:"Territories", lat:18.34, lon:-64.73 },
+  { id:"voyageurs", name:"Voyageurs", state:"Minnesota", region:"Midwest", lat:48.50, lon:-92.88 },
+  { id:"whitesands", name:"White Sands", state:"New Mexico", region:"Southwest", lat:32.78, lon:-106.17 },
+  { id:"windcave", name:"Wind Cave", state:"South Dakota", region:"Great Plains", lat:43.57, lon:-103.48 },
+  { id:"wrangell", name:"Wrangell-St. Elias", state:"Alaska", region:"Alaska", lat:61.00, lon:-142.00 },
+  { id:"yellowstone", name:"Yellowstone", state:"Wyoming / Montana / Idaho", region:"Rocky Mountains", lat:44.60, lon:-110.50 },
+  { id:"yosemite", name:"Yosemite", state:"California", region:"California", lat:37.86, lon:-119.54 },
+  { id:"zion", name:"Zion", state:"Utah", region:"Southwest", lat:37.30, lon:-113.05 }
+];
+
+/* candidate trip clusters, filtered to Charlotte's profile:
+   Class-3 ceiling, no extreme heat, defer Alaska/remote for cost. */
+const CLUSTERS = [
+  { title:"Utah Mighty 5", meta:"5 parks · best cost-per-park · spring or fall",
+    parks:["Zion","Bryce Canyon","Capitol Reef","Arches","Canyonlands"],
+    why:"Strongest single trip left: five parks on one loop. Go spring/fall to dodge the desert heat you want to avoid." },
+  { title:"Colorado finish", meta:"2 parks · close to home · late spring–fall",
+    parks:["Black Canyon of the Gunnison","Mesa Verde"],
+    why:"Pairs with your already-done RMNP + Great Sand Dunes to nearly complete Colorado. Short, cheap, low-stakes." },
+  { title:"California Sierra", meta:"3 parks · summer–fall · big alpine",
+    parks:["Yosemite","Sequoia","Kings Canyon"],
+    why:"Granite, giant sequoias, and summit-worthy day hikes well within Class 3. Dawn starts beat the crowds." },
+  { title:"Pacific Northwest", meta:"3 parks · July–Sept · cool & green",
+    parks:["Mount Rainier","Olympic","North Cascades"],
+    why:"No heat, dramatic alpine, lodge-friendly. Rainier's Skyline is a perfect big-but-safe objective." },
+  { title:"Grand Circle add-on", meta:"2-3 parks · spring/fall",
+    parks:["Grand Canyon","Petrified Forest","Saguaro"],
+    why:"Natural tack-on to a Utah trip. Rim hikes keep it Class 1-2; skip the furnace months." },
+  { title:"Northern Rockies", meta:"3 parks · summer · bucket-list alpine",
+    parks:["Yellowstone","Grand Teton","Glacier"],
+    why:"The big one. Longer drives but iconic; Teton and Glacier have superb Class 2-3 day hikes." }
+];
+
+/* short description for each park, shown in the detail card */
+const PARK_INFO = {
+  acadia:"Rocky Atlantic coastline, granite domes, and Cadillac Mountain — among the first U.S. soil to see sunrise.",
+  amsamoa:"The only U.S. national park south of the equator: tropical rainforest, coral reefs, and Samoan culture across three volcanic islands.",
+  arches:"Over 2,000 natural sandstone arches, including the iconic Delicate Arch, in Utah's red-rock high desert.",
+  badlands:"Striped, eroded buttes and spires rising from a vast mixed-grass prairie full of bison and bighorn sheep.",
+  bigbend:"Where the Chisos Mountains meet the Chihuahuan Desert along a great bend of the Rio Grande; famous dark skies.",
+  biscayne:"95% underwater — turquoise bay, living coral reefs, mangroves, and the northernmost Florida Keys.",
+  blackcanyon:"A dizzyingly steep, narrow gorge carved by the Gunnison River, with some of the steepest cliffs in North America.",
+  bryce:"Not a canyon but a run of amphitheaters packed with red-orange hoodoos — the largest concentration on Earth.",
+  canyonlands:"A vast desert of mesas, buttes, and canyons carved by the Colorado and Green Rivers into four wild districts.",
+  capitolreef:"A 100-mile wrinkle in the Earth's crust (the Waterpocket Fold) with slot canyons, cliffs, and historic orchards.",
+  carlsbad:"A network of 100+ limestone caves, including the enormous Big Room, plus a famous summer bat flight.",
+  channelislands:"Five rugged, undeveloped islands off California — the 'Galápagos of North America,' reached only by boat or plane.",
+  congaree:"The largest intact old-growth bottomland hardwood forest in the U.S., with champion trees and a boardwalk loop.",
+  craterlake:"The deepest lake in the U.S., filling a collapsed volcanic caldera with astonishingly blue water.",
+  cuyahoga:"A green river valley between Cleveland and Akron — waterfalls, the Towpath Trail, and a scenic railroad.",
+  deathvalley:"The hottest, driest, lowest national park — Badwater Basin sits 282 ft below sea level.",
+  denali:"Six million acres around North America's tallest peak (20,310 ft), with one road and vast subarctic wilderness.",
+  drytortugas:"Remote islands 70 miles west of Key West, home to massive Fort Jefferson and pristine reefs; boat or seaplane only.",
+  everglades:"A slow-moving 'river of grass' — the largest tropical wilderness in the U.S., home to alligators and crocodiles.",
+  gatesarctic:"The second-largest and least-visited national park — entirely above the Arctic Circle, with no roads or trails.",
+  gatewayarch:"The 630-ft stainless-steel Gateway Arch in St. Louis, commemorating westward expansion; the smallest national park.",
+  glacier:"A million acres of glacier-carved peaks and lakes along the Going-to-the-Sun Road; the 'Crown of the Continent.'",
+  glacierbay:"Alaskan tidewater glaciers calving into the sea, humpback whales, and dramatic fjords; mostly explored by boat.",
+  grandcanyon:"A mile-deep, 277-mile-long canyon exposing two billion years of rock along the Colorado River.",
+  grandteton:"Jagged granite peaks rising abruptly 7,000 ft above the valley with no foothills, over the Snake River and alpine lakes.",
+  greatbasin:"Ancient bristlecone pines, the Lehman Caves, and 13,000-ft Wheeler Peak under some of the darkest skies in the country.",
+  greatsanddunes:"The tallest sand dunes in North America (up to 750 ft) backed by the Sangre de Cristo Mountains.",
+  greatsmoky:"The most-visited national park — misty, forested ridges on the Tennessee–North Carolina line with incredible biodiversity.",
+  guadalupe:"Texas's highest peak (Guadalupe Peak, 8,751 ft) rising from a fossilized reef, with rugged canyons and desert.",
+  haleakala:"A massive dormant volcano summit on Maui — otherworldly crater landscapes and famous sunrises above the clouds.",
+  hawaiivolcanoes:"Two of the world's most active volcanoes, Kīlauea and Mauna Loa, with lava landscapes, steam vents, and lava tubes.",
+  hotsprings:"Historic thermal springs and grand bathhouses in Arkansas — the oldest federally protected area, set within a small city.",
+  indianadunes:"Sand dunes, beaches, and wetlands along 15 miles of Lake Michigan shoreline with surprising biodiversity.",
+  isleroyale:"A remote, roadless island in Lake Superior known for its wolves and moose; one of the least-visited parks.",
+  joshuatree:"Where the Mojave and Colorado deserts meet — twisted Joshua trees, giant boulders, and brilliant night skies.",
+  katmai:"Famous for brown bears fishing salmon at Brooks Falls, plus the Valley of Ten Thousand Smokes volcanic landscape.",
+  kenaifjords:"Nearly 40 glaciers flowing from the Harding Icefield into the sea, with abundant marine wildlife.",
+  kingscanyon:"Deep glacial canyons and giant sequoia groves, including the General Grant Tree, beside Sequoia NP.",
+  kobukvalley:"Arctic wilderness with the Great Kobuk Sand Dunes and a vast caribou migration; no roads or trails.",
+  lakeclark:"A roadless mix of volcanoes, turquoise lakes, and salmon runs on Alaska's Cook Inlet; reached by small plane.",
+  lassen:"All four volcano types in one park, with boiling mud pots, fumaroles, and the hydrothermal Bumpass Hell.",
+  mammothcave:"The longest known cave system on Earth — over 400 mapped miles of limestone passages.",
+  mesaverde:"Remarkably preserved ancestral Puebloan cliff dwellings, including the 150-room Cliff Palace.",
+  rainier:"An active 14,410-ft glaciated volcano ringed by wildflower meadows; the Wonderland Trail circles it.",
+  newrivergorge:"The newest national park (2020) — a deep Appalachian river gorge famed for whitewater and its iconic bridge.",
+  northcascades:"Jagged, heavily glaciated peaks (300+ glaciers) and turquoise lakes in the rugged North Cascades.",
+  olympic:"Three ecosystems in one — glaciated peaks, temperate rainforest, and wild Pacific coastline.",
+  petrifiedforest:"Colorful badlands scattered with 200-million-year-old petrified wood, plus the Painted Desert.",
+  pinnacles:"Volcanic rock spires and talus caves from an ancient volcano, home to reintroduced California condors.",
+  redwood:"Home to the tallest trees on Earth — coast redwoods — along a wild stretch of Northern California.",
+  rmnp:"72 peaks above 12,000 ft, alpine tundra, and Trail Ridge Road. Your Flattop/Hallett summit and Sky Pond scramble weekend.",
+  saguaro:"Protects the nation's largest cacti — the towering saguaro — in two districts flanking Tucson.",
+  sequoia:"Home to the General Sherman Tree, the largest tree on Earth by volume, among giant sequoia groves.",
+  shenandoah:"A long, narrow Blue Ridge park along Skyline Drive, with waterfalls, overlooks, and Appalachian forest.",
+  theodoreroosevelt:"Colorful North Dakota badlands and prairie where Teddy Roosevelt ranched; bison, wild horses, and solitude.",
+  virginislands:"White-sand beaches, coral reefs, and tropical forest covering much of St. John in the Caribbean.",
+  voyageurs:"A water-based park of interconnected lakes on the Canadian border, best explored by boat; great northern lights.",
+  whitesands:"The world's largest gypsum dunefield — 275 sq miles of brilliant white sand in southern New Mexico.",
+  windcave:"One of the world's longest, most complex caves, known for rare boxwork, beneath mixed-grass prairie.",
+  wrangell:"The largest U.S. national park — bigger than Switzerland — a wilderness of massive peaks and glaciers.",
+  yellowstone:"The world's first national park — geysers like Old Faithful, hot springs, canyons, and wildlife atop a supervolcano.",
+  yosemite:"Granite icons El Capitan and Half Dome, giant sequoias, and towering waterfalls in the Sierra Nevada.",
+  zion:"Towering sandstone cliffs and the Virgin River, with iconic hikes like Angels Landing and The Narrows."
+};
+
+/* official NPS site codes → https://www.nps.gov/<code>/index.htm */
+const NPS_CODE = {
+  acadia:"acad", amsamoa:"npsa", arches:"arch", badlands:"badl", bigbend:"bibe", biscayne:"bisc",
+  blackcanyon:"blca", bryce:"brca", canyonlands:"cany", capitolreef:"care", carlsbad:"cave",
+  channelislands:"chis", congaree:"cong", craterlake:"crla", cuyahoga:"cuva", deathvalley:"deva",
+  denali:"dena", drytortugas:"drto", everglades:"ever", gatesarctic:"gaar", gatewayarch:"jeff",
+  glacier:"glac", glacierbay:"glba", grandcanyon:"grca", grandteton:"grte", greatbasin:"grba",
+  greatsanddunes:"grsa", greatsmoky:"grsm", guadalupe:"gumo", haleakala:"hale", hawaiivolcanoes:"havo",
+  hotsprings:"hosp", indianadunes:"indu", isleroyale:"isro", joshuatree:"jotr", katmai:"katm",
+  kenaifjords:"kefj", kingscanyon:"seki", kobukvalley:"kova", lakeclark:"lacl", lassen:"lavo",
+  mammothcave:"maca", mesaverde:"meve", rainier:"mora", newrivergorge:"neri", northcascades:"noca",
+  olympic:"olym", petrifiedforest:"pefo", pinnacles:"pinn", redwood:"redw", rmnp:"romo",
+  saguaro:"sagu", sequoia:"seki", shenandoah:"shen", theodoreroosevelt:"thro", virginislands:"viis",
+  voyageurs:"voya", whitesands:"whsa", windcave:"wica", wrangell:"wrst", yellowstone:"yell",
+  yosemite:"yose", zion:"zion"
+};
+// Wikipedia article overrides (most resolve as "<name> National Park" via redirect)
+const WIKI_TITLE = { amsamoa:"National Park of American Samoa" };
+function wikiTitle(p){ return WIKI_TITLE[p.id] || (p.name + " National Park"); }
+function npsUrl(p){ return NPS_CODE[p.id] ? `https://www.nps.gov/${NPS_CODE[p.id]}/index.htm` : null; }
+
+/* ---------------- state ---------------- */
+const STORE_KEY = "npt-data-v2";
+// Set this to your deployed sync API base URL (Terraform output `api_base_url`) to enable Strava.
+const STRAVA_API_BASE = "";
+const STATUS_COLORS = { visited:"var(--st-visited)", planned:"var(--st-planned)", bucket:"var(--st-bucket)", none:"var(--st-none)" };
+const RAW_COLORS = { visited:"#2ee6a0", planned:"#4db8ff", bucket:"#ffcf4d", none:"#6b5fa0" };
+const STATUS_LABEL = { visited:"Visited", planned:"Planned", bucket:"Bucket list", none:"Not yet" };
+const REVISIT_LABEL = { yes:"👍 Would return", maybe:"🤷 Maybe again", no:"👎 Wouldn't return" };
+let parks = loadData();
+let legendOff = new Set();
+let projection, pathGen, mapG;
+
+function newId(){ return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now()+"-"+Math.random().toString(36).slice(2)); }
+
+// Build a park's visits list: use the new `visits` array if present, else migrate
+// legacy park-level fields (date/notes/hikes/stays/eats) into a single first visit.
+function migrateVisits(p){
+  if (Array.isArray(p.visits)) {
+    return p.visits.map(v => Object.assign({ id:newId(), start:"", end:"", notes:"", hikes:[], stays:[], eats:[] }, v));
+  }
+  const hikes = p.hikes||[], stays = p.stays||[], eats = p.eats||[];
+  const hasLegacy = p.date || p.dateEnd || p.notes || hikes.length || stays.length || eats.length;
+  if (hasLegacy || p.status === "visited") {
+    return [{ id:newId(), start:p.date||"", end:p.dateEnd||"", notes:p.notes||"", hikes, stays, eats }];
+  }
+  return [];
+}
+
+function loadData() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch(e) {}
+  const byId = {};
+  if (saved && Array.isArray(saved)) saved.forEach(p => byId[p.id] = p);
+  // merge: seed facts + any saved user overlay
+  return SEED.map(s => {
+    const u = byId[s.id] || {};
+    const p = Object.assign({ status:"none", photo:"", revisit:"", rank:0 }, s, u,
+      { name:s.name, state:s.state, region:s.region, lat:s.lat, lon:s.lon, id:s.id });
+    p.visits = migrateVisits(p);
+    // drop legacy park-level fields now folded into visits
+    delete p.date; delete p.dateEnd; delete p.notes; delete p.hikes; delete p.stays; delete p.eats;
+    return p;
+  });
+}
+function saveData() {
+  localStorage.setItem(STORE_KEY, JSON.stringify(parks));
+  render();
+  if (typeof cloudPushDebounced === "function") cloudPushDebounced();
+}
+
+/* ---------------- starfield ---------------- */
+(function starfield() {
+  const c = document.getElementById("stars");
+  const ctx = c.getContext("2d");
+  let stars = [];
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function resize() {
+    c.width = window.innerWidth; c.height = window.innerHeight;
+    const n = Math.floor((c.width * c.height) / 9000);
+    stars = Array.from({length:n}, () => ({
+      x: Math.random()*c.width, y: Math.random()*c.height,
+      r: Math.random()*1.3 + .2, a: Math.random(), tw: Math.random()*0.02 + 0.004
+    }));
+  }
+  function draw() {
+    ctx.clearRect(0,0,c.width,c.height);
+    for (const s of stars) {
+      if (!reduce) { s.a += s.tw; if (s.a>1||s.a<0.1) s.tw*=-1; }
+      ctx.globalAlpha = s.a; ctx.fillStyle = "#cfc8ff";
+      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if (!reduce) requestAnimationFrame(draw);
+  }
+  window.addEventListener("resize", resize);
+  resize(); draw();
+})();
+
+/* ---------------- map ---------------- */
+const svg = d3.select("#map");
+const tooltip = document.getElementById("tooltip");
+// Standard projection that matches us-atlas 975x610 topojson
+// Composite projection incl. AK, HI, PR, VI, GU, AS, MP as insets. scale 1070 fits the 975x610 frame.
+projection = d3.geoAlbersUsaTerritories().scale(1070).translate([487.5, 305]);
+pathGen = d3.geoPath(projection); // us-atlas@3 is raw lon/lat — project it to match the dots
+
+fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json")
+  .then(r => r.json())
+  .then(us => {
+    const states = topojson.feature(us, us.objects.states);
+    mapG = svg.append("g");
+    const gStates = mapG.append("g");
+    gStates.selectAll("path")
+      .data(states.features)
+      .join("path")
+      .attr("class","state-path")
+      .attr("d", pathGen);
+
+    // inset divider lines around AK / HI / PR / VI / GU / AS / MP
+    mapG.append("path")
+      .attr("d", projection.getCompositionBorders())
+      .attr("fill","none").attr("stroke","#5a4bc4").attr("stroke-width",0.9)
+      .attr("opacity",0.75).attr("vector-effect","non-scaling-stroke");
+
+    // small labels inside each inset box
+    const INSET_LABELS = { "02":"Alaska", "15":"Hawaii", "72":"Puerto Rico", "78":"Virgin Is.", "66":"Guam", "69":"N. Mariana", "60":"Am. Samoa" };
+    const gLabels = mapG.append("g").attr("id","insetLabels");
+    states.features.forEach(f => {
+      const lbl = INSET_LABELS[f.id];
+      if (!lbl) return;
+      const b = pathGen.bounds(f);
+      if (!isFinite(b[0][0])) return;
+      gLabels.append("text")
+        .attr("x", b[0][0]).attr("y", b[0][1] - 3)
+        .attr("fill","#b9b4e8").attr("font-size","10").attr("font-weight","600")
+        .attr("letter-spacing",".3").text(lbl);
+    });
+
+    const gDots = mapG.append("g").attr("id","dots");
+
+    // zoom
+    const zoom = d3.zoom().scaleExtent([1,8])
+      .filter((ev) => {
+        // Trackpad pinch arrives as a wheel event with ctrlKey=true → zoom.
+        // A plain two-finger scroll (ctrlKey=false) is ignored here so the PAGE scrolls instead.
+        if (ev.type === "wheel") return ev.ctrlKey;
+        // Allow drag-pan (primary button) and touch gestures; ignore right-click.
+        return !ev.button;
+      })
+      .on("zoom", (ev) => {
+        mapG.attr("transform", ev.transform);
+        mapG.selectAll(".park-dot").attr("r", d => (d._base || 5) / ev.transform.k + 1.5);
+      });
+    svg.call(zoom);
+
+    // zoom control buttons
+    d3.select("#zoomIn").on("click", () => svg.transition().duration(200).call(zoom.scaleBy, 1.6));
+    d3.select("#zoomOut").on("click", () => svg.transition().duration(200).call(zoom.scaleBy, 1/1.6));
+    d3.select("#zoomReset").on("click", () => svg.transition().duration(260).call(zoom.transform, d3.zoomIdentity));
+
+    window._drawDots = () => {
+      const data = parks.map(p => {
+        const xy = projection([p.lon, p.lat]);
+        return xy ? { p, x:xy[0], y:xy[1] } : null;
+      }).filter(Boolean);
+
+      const sel = gDots.selectAll("circle").data(data, d => d.p.id);
+      sel.join(
+        enter => enter.append("circle")
+          .attr("class","park-dot")
+          .attr("cx", d=>d.x).attr("cy", d=>d.y)
+          .each(function(d){ d._base = (d.p.status==="visited"?6:5); })
+          .on("mousemove", (ev,d) => {
+            tooltip.style.display="block";
+            tooltip.style.left = ev.clientX+"px"; tooltip.style.top = ev.clientY+"px";
+            tooltip.textContent = d.p.name + " — " + STATUS_LABEL[d.p.status||"none"];
+          })
+          .on("mouseleave", () => tooltip.style.display="none")
+          .on("click", (ev,d) => openModal(d.p.id)),
+        update => update,
+        exit => exit.remove()
+      )
+      .attr("r", d => (d.p.status==="visited"?6:5))
+      .attr("fill", d => RAW_COLORS[d.p.status||"none"])
+      .style("color", d => RAW_COLORS[d.p.status||"none"])
+      .style("display", d => legendOff.has(d.p.status||"none") ? "none" : null)
+      .each(function(d){ d._base = (d.p.status==="visited"?6:5); });
+
+      document.getElementById("territoryNote").textContent = "";
+    };
+    window._drawDots();
+  })
+  .catch(err => {
+    document.querySelector(".map-card").insertAdjacentHTML("beforeend",
+      "<div style='padding:20px;color:var(--text-dim)'>Map tiles couldn't load (needs internet for the d3/us-atlas CDN). The checklist and stats below still work offline.</div>");
+    console.error(err);
+  });
+
+/* ---------------- legend ---------------- */
+function renderLegend() {
+  const el = document.getElementById("legend");
+  el.innerHTML = "";
+  ["visited","planned","bucket","none"].forEach(s => {
+    const d = document.createElement("div");
+    d.className = "item" + (legendOff.has(s) ? " off" : "");
+    d.innerHTML = `<span class="dot" style="background:${RAW_COLORS[s]}"></span>${STATUS_LABEL[s]}`;
+    d.onclick = () => { legendOff.has(s) ? legendOff.delete(s) : legendOff.add(s); renderLegend(); if(window._drawDots) window._drawDots(); };
+    el.appendChild(d);
+  });
+}
+
+/* ---------------- stats ---------------- */
+function computeStats() {
+  const visited = parks.filter(p => p.status==="visited");
+  const planned = parks.filter(p => p.status==="planned").length;
+  const bucket = parks.filter(p => p.status==="bucket").length;
+  let miles=0, gain=0, hikeCount=0;
+  visited.forEach(p => (p.visits||[]).forEach(v => (v.hikes||[]).forEach(h => {
+    miles += parseFloat(h.dist)||0; gain += parseFloat(h.gain)||0; hikeCount++;
+  })));
+  const states = new Set();
+  visited.forEach(p => p.state.split("/").forEach(s => states.add(s.trim())));
+  const regions = new Set(visited.map(p => p.region));
+  return { count:visited.length, planned, bucket, miles, gain, hikeCount, states:states.size, regions:regions.size };
+}
+function renderStats() {
+  const s = computeStats();
+  const pct = Math.round(s.count/63*100);
+  document.getElementById("visitedCount").textContent = s.count;
+  document.getElementById("ring").style.setProperty("--val", pct);
+  document.getElementById("ringPct").textContent = pct + "%";
+
+  // region breakdown
+  const regionAll = {};
+  parks.forEach(p => { regionAll[p.region] = regionAll[p.region] || {t:0,v:0}; regionAll[p.region].t++; if(p.status==="visited") regionAll[p.region].v++; });
+  const bars = Object.entries(regionAll).sort((a,b)=>b[1].t-a[1].t).map(([r,o]) =>
+    `<div class="row"><span>${r}</span> <span style="float:right">${o.v}/${o.t}</span>
+      <div class="track"><div class="fill" style="width:${o.t?o.v/o.t*100:0}%"></div></div></div>`).join("");
+
+  document.getElementById("statsPanel").innerHTML = `
+    <div class="stat"><div class="v green">${s.count}<span style="font-size:1rem;color:var(--text-dim)"> / 63</span></div><div class="k">Parks visited</div></div>
+    <div class="stat"><div class="v">${s.miles.toFixed(1)}</div><div class="k">Trail miles logged</div></div>
+    <div class="stat"><div class="v">${s.gain.toLocaleString()}</div><div class="k">Feet climbed</div></div>
+    <div class="stat"><div class="v">${s.states}</div><div class="k">States / territories</div></div>
+    <div class="stat"><div class="v">${s.planned} <span style="font-size:.9rem;color:var(--text-dim)">planned · ${s.bucket} bucket</span></div><div class="k">On the radar</div></div>
+    <div class="mini-bars"><div class="k" style="margin-bottom:4px">By region</div>${bars}</div>`;
+}
+
+/* ---------------- clusters ---------------- */
+function renderClusters() {
+  const grid = document.getElementById("clusterGrid");
+  grid.innerHTML = CLUSTERS.map(c => {
+    const pills = c.parks.map(name => {
+      const p = parks.find(x => x.name===name);
+      const done = p && p.status==="visited";
+      return `<span class="pill" style="${done?'opacity:.5;text-decoration:line-through':''}">${name}${done?' ✓':''}</span>`;
+    }).join(" ");
+    const remaining = c.parks.filter(name => { const p=parks.find(x=>x.name===name); return !(p&&p.status==="visited"); }).length;
+    return `<div class="card cluster">
+      <h3>${c.title}</h3>
+      <div class="meta">${c.meta} · ${remaining} left</div>
+      <div class="parks">${pills}</div>
+      <div class="why">${c.why}</div>
+    </div>`;
+  }).join("");
+}
+
+/* ---------------- ranking ---------------- */
+function rankCmp(a, b) {
+  const ra = a.rank || 0, rb = b.rank || 0;
+  if (ra && rb) return ra - rb;
+  if (ra) return -1;
+  if (rb) return 1;
+  return a.name.localeCompare(b.name);
+}
+function rankedVisited() {
+  return parks.filter(p => p.status === "visited").sort(rankCmp);
+}
+function commitOrder(ids) {
+  ids.forEach((id, i) => { const p = parks.find(x => x.id === id); if (p) p.rank = i + 1; });
+  saveData();
+}
+function moveRank(id, dir) {
+  const ids = rankedVisited().map(p => p.id);
+  const idx = ids.indexOf(id), ni = idx + dir;
+  if (idx < 0 || ni < 0 || ni >= ids.length) return;
+  ids.splice(ni, 0, ids.splice(idx, 1)[0]);
+  commitOrder(ids);
+}
+let dragId = null;
+function renderRanking() {
+  const el = document.getElementById("rankList");
+  const visited = rankedVisited();
+  if (!visited.length) {
+    el.innerHTML = `<div class="rank-empty">No visited parks yet — mark a park as Visited and it'll appear here to rank.</div>`;
+    return;
+  }
+  el.innerHTML = visited.map((p, i) => `
+    <div class="card rank-item" draggable="true" data-id="${p.id}">
+      <span class="rank-num">${i + 1}</span>
+      <span class="rank-grip" title="Drag to reorder">⠿</span>
+      <div class="rank-main" data-id="${p.id}">
+        <div class="rn">${p.name}</div>
+        <div class="rl">${p.state} · ${p.region}</div>
+      </div>
+      ${p.revisit ? `<span class="revisit-badge ${p.revisit}">${REVISIT_LABEL[p.revisit]}</span>` : ""}
+      <div class="rank-move">
+        <button class="rk-up" data-id="${p.id}" ${i === 0 ? "disabled" : ""} title="Move up">▲</button>
+        <button class="rk-dn" data-id="${p.id}" ${i === visited.length - 1 ? "disabled" : ""} title="Move down">▼</button>
+      </div>
+    </div>`).join("");
+
+  el.querySelectorAll(".rank-main").forEach(m => m.onclick = () => openModal(m.dataset.id));
+  el.querySelectorAll(".rk-up").forEach(b => b.onclick = e => { e.stopPropagation(); moveRank(b.dataset.id, -1); });
+  el.querySelectorAll(".rk-dn").forEach(b => b.onclick = e => { e.stopPropagation(); moveRank(b.dataset.id, 1); });
+
+  const ids = visited.map(p => p.id);
+  el.querySelectorAll(".rank-item").forEach(it => {
+    it.addEventListener("dragstart", () => { dragId = it.dataset.id; it.classList.add("dragging"); });
+    it.addEventListener("dragend", () => { it.classList.remove("dragging"); el.querySelectorAll(".over").forEach(x => x.classList.remove("over")); });
+    it.addEventListener("dragover", e => { e.preventDefault(); if (it.dataset.id !== dragId) it.classList.add("over"); });
+    it.addEventListener("dragleave", () => it.classList.remove("over"));
+    it.addEventListener("drop", e => {
+      e.preventDefault(); it.classList.remove("over");
+      const targetId = it.dataset.id;
+      if (!dragId || dragId === targetId) return;
+      const order = ids.slice();
+      const from = order.indexOf(dragId), to = order.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      order.splice(to, 0, order.splice(from, 1)[0]);
+      commitOrder(order);
+    });
+  });
+}
+
+/* ---------------- all parks grid ---------------- */
+function renderGrid() {
+  const q = document.getElementById("search").value.toLowerCase();
+  const fs = document.getElementById("filterStatus").value;
+  const fr = document.getElementById("filterRegion").value;
+  const sort = document.getElementById("sortBy").value;
+  const order = { visited:0, planned:1, bucket:2, none:3 };
+  let list = parks.filter(p => {
+    const st = p.status || "none";
+    if (fs && st !== fs) return false;
+    if (fr && p.region !== fr) return false;
+    if (q && !(p.name.toLowerCase().includes(q) || p.state.toLowerCase().includes(q) || p.region.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  list.sort((a,b) => {
+    if (sort==="status") return order[a.status||"none"]-order[b.status||"none"] || a.name.localeCompare(b.name);
+    if (sort==="region") return a.region.localeCompare(b.region) || a.name.localeCompare(b.name);
+    if (sort==="state") return a.state.localeCompare(b.state) || a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name);
+  });
+  const cls = { visited:"visited", planned:"planned", bucket:"bucket", none:"" };
+  document.getElementById("parksGrid").innerHTML = list.map(p => {
+    const st = p.status || "none";
+    const visits = p.visits || [];
+    const hikeN = visits.reduce((n,v)=>n+((v.hikes&&v.hikes.length)||0),0);
+    const stayN = visits.reduce((n,v)=>n+((v.stays&&v.stays.length)||0),0);
+    const eatN  = visits.reduce((n,v)=>n+((v.eats&&v.eats.length)||0),0);
+    const extras = [];
+    if (visits.length>1) extras.push(`${visits.length} visits`);
+    if (hikeN) extras.push(`${hikeN} hike${hikeN>1?'s':''}`);
+    if (stayN) extras.push(`🏨 ${stayN}`);
+    if (eatN)  extras.push(`🍴 ${eatN}`);
+    const hikeInfo = extras.length ? "· " + extras.join(" · ") : "";
+    const dated = visits.filter(v=>v.start).sort((a,b)=>(b.start||"").localeCompare(a.start||""));
+    const datesLine = (st==='visited' && dated.length)
+      ? (visits.length>1
+          ? `<div class="visit-dates">📅 ${visits.length} visits · latest ${fmtRange(dated[0].start,dated[0].end)}</div>`
+          : `<div class="visit-dates">📅 ${fmtRange(dated[0].start,dated[0].end)}</div>`)
+      : '';
+    return `<div class="card park-card ${cls[st]}" data-id="${p.id}">
+      <div class="name">${p.name}</div>
+      <div class="loc">${p.state}</div>
+      <div class="tags">
+        <span class="status-chip ${st==='none'?'none':st}">${STATUS_LABEL[st]}</span>
+        <span class="region">${p.region} ${hikeInfo}</span>
+      </div>
+      ${datesLine}
+      ${st==='visited' && p.revisit ? `<span class="revisit-badge ${p.revisit}">${REVISIT_LABEL[p.revisit]}</span>` : ''}
+    </div>`;
+  }).join("");
+  document.querySelectorAll(".park-card").forEach(el =>
+    el.onclick = () => openModal(el.dataset.id));
+}
+
+function renderRegionFilter() {
+  const sel = document.getElementById("filterRegion");
+  if (sel.options.length > 1) return;
+  [...new Set(parks.map(p=>p.region))].sort().forEach(r => {
+    const o = document.createElement("option"); o.value=r; o.textContent=r; sel.appendChild(o);
+  });
+}
+
+/* ---------------- modal ---------------- */
+let editingId = null;
+function openModal(id) {
+  const p = parks.find(x => x.id===id);
+  if (!p) return;
+  editingId = id;
+  document.getElementById("mName").textContent = p.name;
+  document.getElementById("mLoc").textContent = `${p.state} · ${p.region}`;
+  document.getElementById("mDesc").textContent = PARK_INFO[p.id] || "";
+  document.getElementById("mStatus").value = p.status || "none";
+  document.getElementById("mRevisit").value = p.revisit || "";
+  document.getElementById("mPhoto").value = p.photo || "";
+  // NPS link
+  const nps = document.getElementById("mNps");
+  const url = npsUrl(p);
+  if (url) { nps.href = url; nps.style.display = "inline-block"; } else { nps.style.display = "none"; }
+  setParkImage(p);
+  draftVisits = JSON.parse(JSON.stringify(p.visits || []));
+  renderVisits();
+  document.getElementById("modalBg").classList.add("open");
+}
+const wikiImgCache = {};
+function setParkImage(p) {
+  const hero = document.getElementById("mHero");
+  const credit = document.getElementById("mCredit");
+  const show = (src, cr) => { if (src) { hero.src = src; hero.style.display = "block"; credit.textContent = cr; } else { hero.style.display = "none"; credit.textContent = ""; } };
+  if (p.photo) { show(p.photo, "Your photo"); return; }
+  show("", "");
+  if (wikiImgCache[p.id] !== undefined) { if (editingId===p.id) show(wikiImgCache[p.id], "Photo: Wikipedia"); return; }
+  const title = wikiTitle(p);
+  const api = "https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=pageimages&piprop=thumbnail&pithumbsize=640&redirects=1&titles=" + encodeURIComponent(title);
+  fetch(api).then(r => r.json()).then(j => {
+    const pages = j.query && j.query.pages;
+    const first = pages ? Object.values(pages)[0] : null;
+    const src = first && first.thumbnail ? first.thumbnail.source : "";
+    wikiImgCache[p.id] = src;
+    if (editingId === p.id) show(src, "Photo: Wikipedia");
+  }).catch(() => { wikiImgCache[p.id] = ""; });
+}
+let draftVisits = [];
+function blankVisit(){ return { id:newId(), start:"", end:"", notes:"", hikes:[], stays:[], eats:[] }; }
+
+function visitHikesHTML(v, vi){
+  return (v.hikes||[]).map((h,i) => `
+    <div class="hike">
+      <button class="del" data-act="del" data-vi="${vi}" data-t="hikes" data-i="${i}">remove</button>
+      <input data-vi="${vi}" data-t="hikes" data-i="${i}" data-f="name" placeholder="Hike name" value="${esc(h.name)}" />
+      <div class="grid3">
+        <input data-vi="${vi}" data-t="hikes" data-i="${i}" data-f="dist" placeholder="miles" value="${esc(h.dist)}" />
+        <input data-vi="${vi}" data-t="hikes" data-i="${i}" data-f="time" placeholder="h:mm" value="${esc(h.time)}" />
+        <input data-vi="${vi}" data-t="hikes" data-i="${i}" data-f="gain" placeholder="ft gain" value="${esc(h.gain)}" />
+      </div>
+      <input data-vi="${vi}" data-t="hikes" data-i="${i}" data-f="note" placeholder="note (optional)" value="${esc(h.note||'')}" style="margin-top:8px" />
+    </div>`).join("");
+}
+function visitStaysHTML(v, vi){
+  return (v.stays||[]).map((s,i) => `
+    <div class="logitem">
+      <button class="del" data-act="del" data-vi="${vi}" data-t="stays" data-i="${i}">remove</button>
+      <input data-vi="${vi}" data-t="stays" data-i="${i}" data-f="name" placeholder="Hotel / lodge / where you stayed" value="${esc(s.name)}" />
+      <div class="row2">
+        <select data-vi="${vi}" data-t="stays" data-i="${i}" data-f="again">
+          <option value="">Stay again?</option>
+          <option value="yes"${s.again==='yes'?' selected':''}>👍 Yes, again</option>
+          <option value="maybe"${s.again==='maybe'?' selected':''}>🤷 Maybe</option>
+          <option value="no"${s.again==='no'?' selected':''}>👎 No</option>
+        </select>
+        <input data-vi="${vi}" data-t="stays" data-i="${i}" data-f="nights" placeholder="nights" value="${esc(s.nights||'')}" />
+      </div>
+      <div class="proscons">
+        <textarea data-vi="${vi}" data-t="stays" data-i="${i}" data-f="pros" placeholder="Pros / what you liked">${esc(s.pros||'')}</textarea>
+        <textarea data-vi="${vi}" data-t="stays" data-i="${i}" data-f="cons" placeholder="Cons / downsides">${esc(s.cons||'')}</textarea>
+      </div>
+    </div>`).join("");
+}
+function visitEatsHTML(v, vi){
+  return (v.eats||[]).map((e,i) => `
+    <div class="logitem">
+      <button class="del" data-act="del" data-vi="${vi}" data-t="eats" data-i="${i}">remove</button>
+      <input data-vi="${vi}" data-t="eats" data-i="${i}" data-f="place" placeholder="Restaurant / where you ate" value="${esc(e.place)}" />
+      <div class="row2">
+        <input data-vi="${vi}" data-t="eats" data-i="${i}" data-f="dish" placeholder="What you got" value="${esc(e.dish||'')}" />
+        <select data-vi="${vi}" data-t="eats" data-i="${i}" data-f="again">
+          <option value="">Go again?</option>
+          <option value="yes"${e.again==='yes'?' selected':''}>👍 Yes</option>
+          <option value="maybe"${e.again==='maybe'?' selected':''}>🤷 Maybe</option>
+          <option value="no"${e.again==='no'?' selected':''}>👎 No</option>
+        </select>
+      </div>
+      <input data-vi="${vi}" data-t="eats" data-i="${i}" data-f="note" placeholder="note (optional)" value="${esc(e.note||'')}" style="margin-top:8px" />
+    </div>`).join("");
+}
+function renderVisits(){
+  const el = document.getElementById("visitList");
+  if (!draftVisits.length){
+    el.innerHTML = `<div class="rank-empty" style="margin-bottom:12px">No visits logged yet. Click “+ Add a visit” to record a trip — dates, hikes, lodging, and food.</div>`;
+    return;
+  }
+  el.innerHTML = draftVisits.map((v,vi) => `
+    <div class="visit-card" data-vi="${vi}">
+      <div class="visit-head">
+        <strong>Visit ${vi+1}${v.start?` · ${fmtRange(v.start,v.end)}`:""}</strong>
+        <button class="btn visit-del" data-act="delVisit" data-vi="${vi}">remove visit</button>
+      </div>
+      <div class="field">
+        <label>Dates</label>
+        <div class="date-row">
+          <input type="date" class="v-date" data-vi="${vi}" data-f="start" value="${esc(v.start||'')}" aria-label="Visit start date" />
+          <span class="date-sep">to</span>
+          <input type="date" class="v-date" data-vi="${vi}" data-f="end" value="${esc(v.end||'')}" aria-label="Visit end date (optional)" />
+        </div>
+        <div class="hint">Leave the second date blank for a single-day visit.</div>
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea data-vi="${vi}" data-f="notes" placeholder="Trip memories, logistics, what you'd do differently…">${esc(v.notes||'')}</textarea>
+      </div>
+      <div class="logsec"><h4>Hikes <button class="btn" data-act="addHike" data-vi="${vi}" style="padding:4px 10px;font-size:.78rem;">+ Add hike</button></h4>${visitHikesHTML(v,vi)}</div>
+      <div class="logsec"><h4>Where you stayed <button class="btn" data-act="addStay" data-vi="${vi}" style="padding:4px 10px;font-size:.78rem;">+ Add stay</button></h4>${visitStaysHTML(v,vi)}</div>
+      <div class="logsec"><h4>Where you ate <button class="btn" data-act="addEat" data-vi="${vi}" style="padding:4px 10px;font-size:.78rem;">+ Add spot</button></h4>${visitEatsHTML(v,vi)}</div>
+    </div>`).join("");
+  el.querySelectorAll(".v-date").forEach(d => d.addEventListener("click", () => { try { d.showPicker && d.showPicker(); } catch(e) {} }));
+}
+function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+
+// All visit field edits and add/remove actions are handled by delegation on #visitList.
+(function wireVisitList(){
+  const el = document.getElementById("visitList");
+  if (!el) return;
+  const onEdit = (ev) => {
+    const t = ev.target;
+    const viAttr = t.getAttribute && t.getAttribute("data-vi");
+    const f = t.getAttribute && t.getAttribute("data-f");
+    if (viAttr === null || !f) return;
+    const v = draftVisits[+viAttr];
+    if (!v) return;
+    const type = t.getAttribute("data-t");          // hikes/stays/eats, or null for visit-level
+    const iAttr = t.getAttribute("data-i");
+    if (type && iAttr !== null) {
+      (v[type][+iAttr] = v[type][+iAttr] || {})[f] = t.value;
+    } else {
+      v[f] = t.value;
+    }
+  };
+  el.addEventListener("input", onEdit);
+  el.addEventListener("change", onEdit);            // for <select>
+  el.addEventListener("click", (ev) => {
+    const btn = ev.target.closest && ev.target.closest("button[data-act]");
+    if (!btn) return;
+    const act = btn.getAttribute("data-act");
+    const vi = +btn.getAttribute("data-vi");
+    if (act === "delVisit") { draftVisits.splice(vi,1); renderVisits(); return; }
+    const v = draftVisits[vi];
+    if (!v) return;
+    if (act === "addHike") { (v.hikes=v.hikes||[]).push({name:"",dist:"",time:"",gain:"",note:""}); renderVisits(); return; }
+    if (act === "addStay") { (v.stays=v.stays||[]).push({name:"",nights:"",again:"",pros:"",cons:""}); renderVisits(); return; }
+    if (act === "addEat")  { (v.eats=v.eats||[]).push({place:"",dish:"",again:"",note:""}); renderVisits(); return; }
+    if (act === "del") {
+      const type = btn.getAttribute("data-t"), i = +btn.getAttribute("data-i");
+      if (v[type]) v[type].splice(i,1);
+      renderVisits(); return;
+    }
+  });
+})();
+document.getElementById("addVisit").onclick = () => { draftVisits.push(blankVisit()); renderVisits(); };
+
+// format a visit date range: "Aug 29–30, 2026" / "Aug 29, 2026" / cross-month & cross-year variants
+function fmtRange(start, end){
+  if(!start) return "";
+  const s = new Date(start+"T00:00:00");
+  const o = {month:"short", day:"numeric"};
+  if(!end || end===start) return s.toLocaleDateString("en-US",{...o, year:"numeric"});
+  const e = new Date(end+"T00:00:00");
+  const sameMonth = s.getMonth()===e.getMonth() && s.getFullYear()===e.getFullYear();
+  const sameYear = s.getFullYear()===e.getFullYear();
+  if(sameMonth) return s.toLocaleDateString("en-US",o)+"–"+e.getDate()+", "+e.getFullYear();
+  if(sameYear) return s.toLocaleDateString("en-US",o)+" – "+e.toLocaleDateString("en-US",{...o, year:"numeric"});
+  return s.toLocaleDateString("en-US",{...o, year:"numeric"})+" – "+e.toLocaleDateString("en-US",{...o, year:"numeric"});
+}
+
+document.getElementById("mPhoto").oninput = (e) => {
+  const v = e.target.value.trim();
+  const hero = document.getElementById("mHero"), credit = document.getElementById("mCredit");
+  if (v) { hero.src = v; hero.style.display = "block"; credit.textContent = "Your photo"; }
+  else if (editingId) { const p = parks.find(x => x.id===editingId); if (p) setParkImage({...p, photo:""}); }
+};
+document.getElementById("saveBtn").onclick = () => {
+  const p = parks.find(x => x.id===editingId);
+  p.status = document.getElementById("mStatus").value;
+  p.revisit = document.getElementById("mRevisit").value;
+  p.photo = document.getElementById("mPhoto").value;
+  p.visits = draftVisits.map(v => ({
+    id: v.id || newId(),
+    start: v.start || "",
+    end: v.end || "",
+    notes: v.notes || "",
+    hikes: (v.hikes||[]).filter(h => h.name || h.dist || h.gain),
+    stays: (v.stays||[]).filter(s => s.name || s.pros || s.cons),
+    eats:  (v.eats||[]).filter(e => e.place || e.dish),
+  })).filter(v => v.start || v.end || v.notes || v.hikes.length || v.stays.length || v.eats.length);
+  closeModal(); saveData();
+};
+function closeModal(){ document.getElementById("modalBg").classList.remove("open"); editingId=null; }
+document.getElementById("closeX").onclick = closeModal;
+document.getElementById("cancelBtn").onclick = closeModal;
+document.getElementById("modalBg").onclick = (e) => { if (e.target.id==="modalBg") closeModal(); };
+
+/* ---------------- export / import ---------------- */
+document.getElementById("exportBtn").onclick = () => {
+  const blob = new Blob([JSON.stringify(parks,null,2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "parks-tracker-data.json"; a.click();
+};
+document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+document.getElementById("importFile").onchange = (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const data = JSON.parse(r.result);
+      if (!Array.isArray(data)) throw new Error("bad format");
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
+      parks = loadData(); render();
+      alert("Imported " + data.length + " parks.");
+    } catch(err) { alert("Couldn't import that file: " + err.message); }
+  };
+  r.readAsText(f);
+};
+
+/* ---------------- controls ---------------- */
+["search","filterStatus","filterRegion","sortBy"].forEach(id =>
+  document.getElementById(id).addEventListener("input", renderGrid));
+document.addEventListener("keydown", e => { if (e.key==="Escape") closeModal(); });
+
+/* ---------------- render ---------------- */
+function render() {
+  renderLegend();
+  renderStats();
+  renderClusters();
+  renderRanking();
+  renderRegionFilter();
+  renderGrid();
+  if (window._drawDots) window._drawDots();
+}
+render();
+
+/* ---------------- Strava sync (optional; needs deployed backend) ---------------- */
+(function strava() {
+  if (!STRAVA_API_BASE) return;
+  const box = document.getElementById("stravaBox");
+  box.style.display = "flex";
+
+  // capture athlete id after OAuth redirect (?strava=connected&athlete=123)
+  const qp = new URLSearchParams(location.search);
+  if (qp.get("athlete")) {
+    localStorage.setItem("npt-strava-athlete", qp.get("athlete"));
+    history.replaceState({}, "", location.pathname);
+  }
+  const athlete = () => localStorage.getItem("npt-strava-athlete");
+
+  document.getElementById("stravaConnect").onclick = () => {
+    location.href = STRAVA_API_BASE + "/connect";
+  };
+  document.getElementById("stravaSync").onclick = async () => {
+    const a = athlete();
+    if (!a) { alert("Connect Strava first."); return; }
+    const btn = document.getElementById("stravaSync");
+    btn.textContent = "Syncing…"; btn.disabled = true;
+    try {
+      const res = await fetch(`${STRAVA_API_BASE}/activities?athlete=${encodeURIComponent(a)}`);
+      const data = await res.json();
+      const added = mergeStrava(data.activities || []);
+      saveData();
+      alert(`Synced ${(data.activities||[]).length} activities · ${added} new added to parks.`);
+    } catch (e) {
+      alert("Sync failed: " + e.message);
+    } finally {
+      btn.textContent = "↻ Sync activities"; btn.disabled = false;
+    }
+  };
+})();
+
+/* ---------------- toast ---------------- */
+function toast(msg) {
+  let t = document.getElementById("_toast");
+  if (!t) {
+    t = document.createElement("div"); t.id = "_toast";
+    t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chrome);color:#fff;padding:10px 16px;border-radius:10px;box-shadow:var(--shadow);z-index:200;font-size:.85rem;transition:opacity .35s;opacity:0;";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg; t.style.opacity = "1";
+  clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = "0"; }, 2800);
+}
+
+/* ---------------- cloud save (optional; uses the same deployed backend) ----------------
+   Data is stored server-side under a private "sync key" (a random UUID held in this
+   browser). The same key on another device/browser pulls the same data down. */
+const CLOUD_KEY_LS = "npt-sync-key";
+const CLOUD_AT_LS  = "npt-synced-at";
+function cloudKey() { return localStorage.getItem(CLOUD_KEY_LS) || ""; }
+function ensureCloudKey() {
+  let k = cloudKey();
+  if (!k) {
+    k = (window.crypto && crypto.randomUUID ? crypto.randomUUID() : (Date.now() + "-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2))).replace(/-/g, "");
+    localStorage.setItem(CLOUD_KEY_LS, k);
+  }
+  return k;
+}
+function cloudPush(key) {
+  if (!STRAVA_API_BASE) return Promise.resolve(null);
+  const k = key || cloudKey();
+  if (!k) return Promise.resolve(null);
+  const updated_at = Date.now();
+  return fetch(STRAVA_API_BASE + "/data", {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: k, parks, updated_at })
+  }).then(r => r.json()).then(j => {
+    if (j && j.ok) localStorage.setItem(CLOUD_AT_LS, String(updated_at));
+    return j;
+  });
+}
+let cloudPushTimer = null;
+function cloudPushDebounced() {
+  if (!STRAVA_API_BASE || !cloudKey()) return;
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(() => cloudPush().then(() => toast("Synced to cloud ☁")).catch(e => console.warn("cloud push failed", e)), 1500);
+}
+function cloudPull(key) {
+  const k = (key || cloudKey() || "").trim();
+  if (!STRAVA_API_BASE || !k) return Promise.resolve(null);
+  return fetch(STRAVA_API_BASE + "/data?key=" + encodeURIComponent(k)).then(r => r.json());
+}
+function adoptCloud(j) {
+  if (!(j && Array.isArray(j.parks))) return false;
+  localStorage.setItem(STORE_KEY, JSON.stringify(j.parks));
+  localStorage.setItem(CLOUD_AT_LS, String(j.updated_at || Date.now()));
+  parks = loadData();
+  render();
+  return true;
+}
+(function cloud() {
+  if (!STRAVA_API_BASE) return;
+  document.getElementById("cloudBox").style.display = "flex";
+  // auto-pull on load: adopt cloud copy if it's newer than what this browser last synced
+  const k = cloudKey();
+  if (k) {
+    cloudPull(k).then(j => {
+      if (j && Array.isArray(j.parks)) {
+        const localAt = parseInt(localStorage.getItem(CLOUD_AT_LS) || "0", 10);
+        if ((j.updated_at || 0) > localAt) { adoptCloud(j); toast("Loaded latest from cloud ☁"); }
+      }
+    }).catch(() => {});
+  }
+  document.getElementById("cloudSave").onclick = async () => {
+    const key = ensureCloudKey();
+    const btn = document.getElementById("cloudSave");
+    btn.textContent = "Saving…"; btn.disabled = true;
+    try {
+      await cloudPush(key);
+      prompt("Saved to cloud ✓\n\nThis is your private sync key. Keep it somewhere safe — paste it into \"Load from cloud\" on any other browser or device to pull your data:", key);
+    } catch (e) { alert("Cloud save failed: " + e.message); }
+    finally { btn.textContent = "☁ Save to cloud"; btn.disabled = false; }
+  };
+  document.getElementById("cloudLoad").onclick = async () => {
+    const entered = prompt("Enter your sync key to load your data on this device:", cloudKey());
+    if (!entered) return;
+    try {
+      const j = await cloudPull(entered.trim());
+      if (j && Array.isArray(j.parks)) {
+        localStorage.setItem(CLOUD_KEY_LS, entered.trim());
+        adoptCloud(j);
+        toast("Loaded " + j.parks.length + " parks from cloud ☁");
+      } else {
+        alert("No data found for that key yet. Use \"Save to cloud\" first.");
+      }
+    } catch (e) { alert("Cloud load failed: " + e.message); }
+  };
+})();
+
+/* ---------------- native date picker: open calendar on click ---------------- */
+["mDate", "mDateEnd"].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("click", () => { try { el.showPicker && el.showPicker(); } catch (e) {} });
+});
+
+function secToHMS(s) {
+  s = parseInt(s||0,10); const h = Math.floor(s/3600), m = Math.round((s%3600)/60);
+  return h + ":" + String(m).padStart(2,"0");
+}
+function mergeStrava(list) {
+  let added = 0;
+  const hasStravaId = (p, id) => (p.visits||[]).some(v => (v.hikes||[]).some(h => h.stravaId === id));
+  list.forEach(act => {
+    if (!act.park_id) return;                 // unassigned (no GPS / outside any park)
+    const p = parks.find(x => x.id === act.park_id);
+    if (!p) return;
+    const sid = String(act.activity_id);
+    if (hasStravaId(p, sid)) return;          // dedupe across all visits
+    const date = act.start_date ? act.start_date.slice(0,10) : "";
+    p.visits = p.visits || [];
+    // group into a visit that shares the activity's date; else start a new visit
+    let v = date ? p.visits.find(x => (x.start||"").slice(0,10) === date) : null;
+    if (!v) { v = blankVisit(); v.start = date; p.visits.push(v); }
+    v.hikes = v.hikes || [];
+    v.hikes.push({
+      name: act.name || act.type || "Activity",
+      dist: String(act.distance_mi || ""),
+      time: secToHMS(act.moving_time_s),
+      gain: String(act.elev_gain_ft || ""),
+      note: (act.type || "") + (date ? " · " + date : ""),
+      stravaId: sid,
+    });
+    if (p.status !== "visited") p.status = "visited";   // auto-mark visited
+    added++;
+  });
+  return added;
+}
+</script>
+</body>
+</html>
